@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Login - WebDAV Cloud{% endblock %}
+
+{% block content %}
+    <h2>Login</h2>
+    <form id="login-form">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required>
+
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required>
+
+        <button type="submit">Login</button>
+    </form>
+
+    <div id="message"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.getElementById("login-form").addEventListener("submit", async function(event) {
+        event.preventDefault();
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+
+        const formData = new FormData();
+        formData.append("username", username);
+        formData.append("password", password);
+
+        const response = await fetch("/token/", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+        const messageDiv = document.getElementById("message");
+
+        if (response.status === 200) {
+            messageDiv.style.color = "green";
+            messageDiv.innerHTML = "<p>Login successful! Redirecting to <a href='/'>home page</a>.</p>";
+            setTimeout(() => {
+                window.location.href = "/";
+            }, 2000);
+        } else {
+            messageDiv.style.color = "red";
+            messageDiv.innerHTML = `<p>Error: ${data.detail}</p>`;
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Просмотр файлов - WebDAV Cloud{% endblock %}
+
+{% block content %}
+    <h2>Загруженные файлы</h2>
+    {% if files %}
+        <ul id="file-list">
+            {% for file in files %}
+                <li id="file-{{ loop.index }}">
+                    <a href="/files/{{ file }}" class="file-link">{{ file }}</a>
+                    <button class="delete-button" onclick="deleteFile('{{ file }}')">
+                        <i class="fa fa-trash" aria-hidden="true"></i>
+                        <span class="sr-only">Удалить {{ file }}</span>
+                    </button>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>Файлы еще не загружены.</p>
+    {% endif %}
+    <div id="message"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function deleteFile(filename) {
+        const confirmDelete = confirm(`Вы уверены, что хотите удалить "${filename}"?`);
+        if (!confirmDelete) return;
+
+        try {
+            const response = await fetch(`/files/${encodeURIComponent(filename)}`, {
+                method: "DELETE",
+                credentials: 'include' // Чтобы отправить cookies с запросом, если необходимо
+            });
+
+            const data = await response.json();
+            const messageDiv = document.getElementById("message");
+
+            if (response.status === 200) {
+                messageDiv.style.color = "green";
+                messageDiv.innerHTML = `<p>${data.info}</p>`;
+                // Удалить элемент из списка
+                const fileList = document.getElementById("file-list");
+                const fileItems = fileList.getElementsByTagName("li");
+                for (let item of fileItems) {
+                    const fileNameElement = item.querySelector('.file-link');
+                    if (fileNameElement && fileNameElement.textContent === filename) {
+                        fileList.removeChild(item);
+                        break;
+                    }
+                }
+            } else {
+                messageDiv.style.color = "red";
+                messageDiv.innerHTML = `<p>Ошибка: ${data.detail}</p>`;
+            }
+        } catch (error) {
+            console.error('Ошибка при удалении файла:', error);
+            const messageDiv = document.getElementById("message");
+            messageDiv.style.color = "red";
+            messageDiv.innerHTML = `<p>Произошла ошибка при удалении файла.</p>`;
+        }
+    }
+</script>
+{% endblock %}
