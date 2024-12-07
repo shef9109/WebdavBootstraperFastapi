@@ -1,46 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}WebDAV Cloud{% endblock %}</title>
-    <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-        integrity="sha512-p6ZCtbq8HiAss5bRjvZmTqfb49bMxBm9GqjVwLx4Q+NAIi/kg1VHzHv3eCjSzN2kXVYUjAcB3VGUuKf+Ejqg8g=="
-        crossorigin="anonymous"
-        referrerpolicy="no-referrer"
-    />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css">
-    <style>
-
-    </style>
-    {% block extra_head %}{% endblock %}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}WebDAV Cloud{% endblock %}</title>
+  <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      integrity="sha512-p6ZCtbq8HiAss5bRjvZmTqfb49bMxBm9GqjVwLx4Q+NAIi/kg1VHzHv3eCjSzN2kXVYUjAcB3VGUuKf+Ejqg8g=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+  />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <header>
-        <h1>Welcome to the WebDAV Cloud</h1>
-        <nav>
-            <a href="/">Home</a>
-            {% if current_user %}
-                <a href="/upload">Upload File</a>
-                <a href="/files">View Files</a>
-                <a href="/users/me">User: {{ current_user.username }}</a>
-                <a href="/logout">Logout</a>
-            {% else %}
-                <a href="/register">Register</a>
-                <a href="/login">Login</a>
-            {% endif %}
-        </nav>
-    </header>
-    <main>
-        {% block content %}{% endblock %}
-    </main>
-    <footer>
-        <p>&copy; 2024 WebDAV Cloud by Nikita Samurai</p>
-    </footer>
-    {% block extra_scripts %}{% endblock %}
+<header>
+  <h1>Welcome to the WebDAV Cloud</h1>
+  <nav>
+    <a href="/">Home</a>
+    {% if current_user %}
+    <a href="/upload">Upload File</a>
+    <a href="/files">View Files</a>
+    <a href="/users/me">User: {{ current_user.username }}</a>
+    <a href="/logout">Logout</a>
+    {% else %}
+    <a href="/register">Register</a>
+    <a href="/login">Login</a>
+    {% endif %}
+  </nav>
+</header>
+<main>
+  {% block content %}{% endblock %}
+</main>
+<footer>
+  <p>&copy; 2024 WebDAV Cloud by Nikita Samurai</p>
+</footer>
+{% block extra_scripts %}{% endblock %}
 </body>
 </html>

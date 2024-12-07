@@ -1,5 +1,7 @@
+import os
 from datetime import datetime, timedelta, UTC
 
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -8,8 +10,9 @@ from sqlalchemy.orm import Session
 import app.resources.crud as crud
 from app.database.db import SessionLocal
 
+load_dotenv()
 # Секретный ключ для JWT
-SECRET_KEY = "Nikita_put_your_key_here"
+SECRET_KEY = os.getenv("SECRET_KEY", "secret_salt")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")

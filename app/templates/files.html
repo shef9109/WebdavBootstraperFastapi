@@ -31,7 +31,7 @@
         try {
             const response = await fetch(`/files/${encodeURIComponent(filename)}`, {
                 method: "DELETE",
-                credentials: 'include' // Чтобы отправить cookies с запросом, если необходимо
+                credentials: 'include'
             });
 
             const data = await response.json();

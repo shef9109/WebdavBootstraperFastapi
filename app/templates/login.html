@@ -23,16 +23,13 @@
         event.preventDefault();
         const username = document.getElementById("username").value;
         const password = document.getElementById("password").value;
-
         const formData = new FormData();
         formData.append("username", username);
         formData.append("password", password);
-
         const response = await fetch("/token/", {
             method: "POST",
             body: formData
         });
-
         const data = await response.json();
         const messageDiv = document.getElementById("message");
 

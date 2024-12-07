@@ -1,7 +1,8 @@
+from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+
 from app.models.models import User
 from app.schemas.schemas import UserCreate
-from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -12,6 +13,10 @@ def get_user_by_username(db: Session, username: str):
 
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_user(db: Session, user: UserCreate):
