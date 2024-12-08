@@ -25,6 +25,7 @@ Base.metadata.create_all(bind=engine)
 origins = [
     "http://localhost",
     "http://localhost:8000",
+    "http://81.200.150.101"
 ]
 
 app.add_middleware(
