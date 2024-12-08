@@ -14,5 +14,4 @@ def get_context(request: Request, files: list = None):
     }
 
 def get_user_upload_dir(user: models.User) -> Path:
-    """Возвращает путь к директории загрузки для конкретного пользователя."""
     return Path("uploads") / str(user.username)  # Используем ID пользователя для создания уникальной директории
