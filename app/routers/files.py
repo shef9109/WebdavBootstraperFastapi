@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 
 from app.models import models
 from app.resources.auth import get_current_user
-from app.utils import templates, get_context
+from app.utils import templates, get_context, get_user_upload_dir  # Импортируем новую функцию
 
 router = APIRouter(
     tags=["files"]
@@ -26,11 +26,12 @@ async def upload_page(request: Request):
 async def list_files(request: Request, current_user: models.User = Depends(get_current_user)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    upload_dir = Path("uploads")
-    if not upload_dir.exists():
+
+    user_upload_dir = get_user_upload_dir(current_user)
+    if not user_upload_dir.exists():
         files = []
     else:
-        files = [f.name for f in upload_dir.iterdir() if f.is_file()]
+        files = [f.name for f in user_upload_dir.iterdir() if f.is_file()]
 
     return templates.TemplateResponse("files.html", get_context(request, files))
 
@@ -40,9 +41,9 @@ async def upload_file(file: UploadFile = File(...), current_user: models.User = 
     if not current_user:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    upload_dir = Path("uploads")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    upload_path = upload_dir / file.filename
+    user_upload_dir = get_user_upload_dir(current_user)
+    user_upload_dir.mkdir(parents=True, exist_ok=True)  # Создаем директорию пользователя, если она не существует
+    upload_path = user_upload_dir / file.filename
 
     try:
         async with aiofiles.open(upload_path, 'wb') as out_file:
@@ -56,7 +57,8 @@ async def upload_file(file: UploadFile = File(...), current_user: models.User = 
 
 @router.get("/files/{filename}", response_class=FileResponse)
 async def get_file(filename: str, current_user: models.User = Depends(get_current_user)):
-    file_location = UPLOAD_DIR / filename
+    user_upload_dir = get_user_upload_dir(current_user)
+    file_location = user_upload_dir / filename
     if file_location.exists() and file_location.is_file():
         return FileResponse(path=file_location, filename=filename)
     raise HTTPException(status_code=404, detail="Файл не найден.")
@@ -64,7 +66,8 @@ async def get_file(filename: str, current_user: models.User = Depends(get_curren
 
 @router.delete("/files/{filename}")
 async def delete_file(filename: str, current_user: models.User = Depends(get_current_user)):
-    file_location = UPLOAD_DIR / filename
+    user_upload_dir = get_user_upload_dir(current_user)
+    file_location = user_upload_dir / filename
     if file_location.exists() and file_location.is_file():
         os.remove(file_location)
         return JSONResponse(content={"info": f"Файл '{filename}' успешно удален."})
