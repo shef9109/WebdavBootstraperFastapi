@@ -10,8 +10,7 @@ from app.resources.auth import get_db
 from app.routers import auth, users, files
 
 app = FastAPI(
-    title="Мой FastAPI проект",
-    description="Описание вашего проекта",
+    title="Webdav + Fastapi",
     version="1.0.0",
 )
 
@@ -25,6 +24,7 @@ Base.metadata.create_all(bind=engine)
 origins = [
     "http://localhost",
     "http://localhost:8000",
+    "http://localhost:8081",
     "http://81.200.150.101"
 ]
 

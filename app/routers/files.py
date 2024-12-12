@@ -1,20 +1,21 @@
-import os
-from pathlib import Path
+import io
+import logging
 
-import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from starlette.responses import RedirectResponse
 
 from app.models import models
 from app.resources.auth import get_current_user
-from app.utils import templates, get_context, get_user_upload_dir  # Импортируем новую функцию
+from app.utils import templates, get_context  # Импортируем новую функцию
+from webdav.client import get_webdav_client, WEBDAV_OPTIONS
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     tags=["files"]
 )
-
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.get("/upload", response_class=HTMLResponse)
@@ -26,49 +27,53 @@ async def upload_page(request: Request):
 async def list_files(request: Request, current_user: models.User = Depends(get_current_user)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Unauthorized")
-
-    user_upload_dir = get_user_upload_dir(current_user)
-    if not user_upload_dir.exists():
-        files = []
-    else:
-        files = [f.name for f in user_upload_dir.iterdir() if f.is_file()]
-
-    return templates.TemplateResponse("files.html", get_context(request, files))
+    client = get_webdav_client()
+    try:
+        remote_path = f"/{current_user.username}/"
+        files = client.list(remote_path)
+        files = [f for f in files if not client.is_dir(remote_path + f)]
+        file_names = [f.split('/')[-1] for f in files]
+        return templates.TemplateResponse("files.html", get_context(request, file_names))
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка файлов для пользователя {current_user.username}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении списка файлов: {str(e)}")
 
 
 @router.post("/upload/")
 async def upload_file(file: UploadFile = File(...), current_user: models.User = Depends(get_current_user)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Unauthorized")
-
-    user_upload_dir = get_user_upload_dir(current_user)
-    user_upload_dir.mkdir(parents=True, exist_ok=True)  # Создаем директорию пользователя, если она не существует
-    upload_path = user_upload_dir / file.filename
-
+    client = get_webdav_client()
     try:
-        async with aiofiles.open(upload_path, 'wb') as out_file:
-            content = await file.read()
-            await out_file.write(content)
+        file_contents = await file.read()
+        remote_path = f"/{current_user.username}/{file.filename}"
+        file_stream = io.BytesIO(file_contents)
+        client.upload_to(file_stream, remote_path)
+        logger.info(f"Пользователь {current_user.username} загрузил файл {file.filename}")
+        return {"filename": file.filename, "path": remote_path,
+                "info": f"File '{file.filename}' uploaded successfully."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to upload file.")
-
-    return {"info": f"File '{file.filename}' uploaded successfully."}
+        logger.error(f"Ошибка при загрузке файла {file.filename} пользователем {current_user.username}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке файла: {str(e)}")
 
 
 @router.get("/files/{filename}", response_class=FileResponse)
 async def get_file(filename: str, current_user: models.User = Depends(get_current_user)):
-    user_upload_dir = get_user_upload_dir(current_user)
-    file_location = user_upload_dir / filename
-    if file_location.exists() and file_location.is_file():
-        return FileResponse(path=file_location, filename=filename)
-    raise HTTPException(status_code=404, detail="Файл не найден.")
+    return RedirectResponse(url=f"{WEBDAV_OPTIONS['webdav_hostname']}{current_user.username}/{filename}")
 
 
 @router.delete("/files/{filename}")
 async def delete_file(filename: str, current_user: models.User = Depends(get_current_user)):
-    user_upload_dir = get_user_upload_dir(current_user)
-    file_location = user_upload_dir / filename
-    if file_location.exists() and file_location.is_file():
-        os.remove(file_location)
+    client = get_webdav_client()
+
+    try:
+        remote_path = f"/{current_user.username}/{filename}"
+        if not client.check(remote_path):
+            logger.warning(f"Файл {filename} для пользователя {current_user.username} не найден.")
+            raise HTTPException(status_code=404, detail="Файл не найден.")
+        client.clean(remote_path)
+        logger.info(f"Пользователь {current_user.username} удалил файл {filename}")
         return JSONResponse(content={"info": f"Файл '{filename}' успешно удален."})
-    raise HTTPException(status_code=404, detail="Файл не найден.")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении файла {filename} пользователем {current_user.username}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при удалении файла: {str(e)}")
