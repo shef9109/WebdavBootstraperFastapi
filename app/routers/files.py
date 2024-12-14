@@ -30,6 +30,7 @@ async def list_files(request: Request, current_user: models.User = Depends(get_c
     client = get_webdav_client()
     try:
         remote_path = f"/{current_user.username}/"
+        client.mkdir(remote_path)
         files = client.list(remote_path)
         files = [f for f in files if not client.is_dir(remote_path + f)]
         file_names = [f.split('/')[-1] for f in files]
@@ -47,6 +48,7 @@ async def upload_file(file: UploadFile = File(...), current_user: models.User = 
     try:
         file_contents = await file.read()
         remote_path = f"/{current_user.username}/{file.filename}"
+        client.mkdir(f"/{current_user.username}/")
         file_stream = io.BytesIO(file_contents)
         client.upload_to(file_stream, remote_path)
         logger.info(f"Пользователь {current_user.username} загрузил файл {file.filename}")
