@@ -1,3 +1,5 @@
+from typing import Callable
+
 from fastapi import FastAPI, Request, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt
@@ -5,6 +7,8 @@ from starlette.staticfiles import StaticFiles
 import os
 import re
 import inspect
+from functools import partial
+from operator import is_not
 import importlib
 
 from app.resources import crud
@@ -15,11 +19,12 @@ from app.controllers import auth, users, files
 
 python_controller_mask = re.compile(r'^(?P<Name>[^_]\w+)\.py$')
 python_controller_class_mask = re.compile(r'^(?P<Name>[^_]\w+)Controller$')
-python_action_mask = re.compile(r'^(?P<Name>[^_]\w+)Action$')
+python_action_mask = re.compile(r'^(?P<Type>(Post|Get|Put|Options|Head|Delete|Patch|))(?P<Name>[^_]\w+)Action$')
 kebab_case_converter = re.compile(r'((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))')
 
 
 app = FastAPI(
+    debug=True,
     title="Webdav + Fastapi",
     version="1.0.0",
 )
@@ -77,29 +82,63 @@ async def add_current_user(request: Request, call_next):
 def to_kebab_case(func_name: str) -> str:
     return kebab_case_converter.sub(r'-\1', func_name).lower()
 
-def bootstrap_controllers():
-    controller_files = os.listdir('app/controllers')
-    controller_model_names = list(map(lambda f:python_controller_mask.match(f).group('Name'), filter(python_controller_mask.match, controller_files)))
-    modules = __import__('app.controllers', fromlist=controller_model_names)
-    controller_modules = {controller_module:getattr(modules, controller_module) for controller_module in controller_model_names}
+def register_action(router: APIRouter, name: str, func: Callable) -> None:
+    action_name = python_action_mask.match(name).group('Name')
+    action_type = python_action_mask.match(name).group('Type').upper()
+    if action_type == '':
+        action_type = 'GET'
+    print(action_type, action_name)
+    router.add_api_route(path=f'/{to_kebab_case(action_name)}', endpoint=func, methods=[action_type,])
+    if action_name == 'Index':
+        router.add_api_route(path='/', endpoint=func, methods=[action_type,])
 
-    controller_classes = {}
+def create_routers(name: str) -> list[APIRouter]:
+    controller_name = python_controller_class_mask.match(name).group('Name')
+    routers = [APIRouter(
+        prefix=f"/{to_kebab_case(controller_name)}" if not to_kebab_case(controller_name).startswith(
+            '/') else to_kebab_case(controller_name),
+        tags=[name])]
+    if controller_name == 'Index':
+        routers.append(APIRouter(prefix='', tags=[name]))
+    return routers
 
-    for module_name, module in controller_modules.items():
-        for name, cls in inspect.getmembers(module, inspect.isclass):
-            if controller_name := python_controller_class_mask.match(name):
-                controller_prefix = to_kebab_case(controller_name.group('Name'))
-                if not controller_prefix.startswith('/'):
-                    controller_prefix = f'/{controller_prefix}'
-                router = APIRouter(prefix=controller_prefix, tags=[name])
-                controller_classes[name] = cls
-                for func_name, func in inspect.getmembers(cls, inspect.isfunction):
-                    if action_name := python_action_mask.match(func_name):
-                        router.add_api_route(path=f'/{to_kebab_case(action_name.group('Name'))}', endpoint=func)
-                        print((f'Модуль найден: {func_name} в контролере {name}'))
-                        print(f'{to_kebab_case(controller_name.group('Name'))}/{to_kebab_case(action_name.group('Name'))}')
-                app.include_router(router)
-    return controller_classes
+def bootstrap_controllers(app_instance: FastAPI):
+    controller_files = os.listdir('app/controllers') # Список всех  файлов в дириктории
+    controller_model_names = list(map(lambda f:python_controller_mask.match(f).group('Name'), filter(python_controller_mask.match, controller_files))) # Имена .py модулей из дирикторивских модулей
+    modules = __import__('app.controllers', fromlist=controller_model_names) # Перечень самих пакетов модулей
+    controller_modules = {controller_module:getattr(modules, controller_module) for controller_module in controller_model_names} # Словарь с именем модуля и ссылкой на него
+
+    # Фильтрованный список контроллеров по имени и классу
+    all_controllers = filter(
+        lambda name_cls: python_controller_class_mask.match(name_cls[0]),
+        ((name, cls) for module in controller_modules.values() for name, cls in
+         inspect.getmembers(module, inspect.isclass))
+    )
+
+    # Создание контроллера из имени и класса
+    # create_router = lambda name, cls: (
+    #     controller_name := python_controller_class_mask.match(name).group('Name'),
+    #     router := APIRouter(
+    #         prefix=f"/{to_kebab_case(controller_name)}" if not to_kebab_case(controller_name).startswith(
+    #             '/') else to_kebab_case(controller_name),
+    #         tags=[name]
+    #     ),
+    #     list(map(lambda elem: register_action(router, *elem),
+    #         filter(lambda nf: python_action_mask.match(nf[0]), inspect.getmembers(cls, inspect.isfunction)))),
+    #     app.include_router(router),
+    #     cls
+    # )
+    controller_routers = [(name, cls, create_routers(name)) for name, cls in all_controllers]
+    for name, cls, routers in controller_routers:
+        actions = filter(lambda nf: python_action_mask.match(nf[0]), inspect.getmembers(cls, inspect.isfunction))
+        for router in routers:
+            for action in actions:
+                print(action)
+                register_action(router, action[0], action[1])
+            app_instance.include_router(router)
+
+
+    return 1
 
 # if __name__ == "__main__":
-bootstrap_controllers()
+bootstrap_controllers(app)

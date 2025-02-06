@@ -11,6 +11,42 @@ router = APIRouter(
     tags=["users"]
 )
 
+class UsersController:
+
+    @staticmethod
+    def registerAction(user: schemas.UserCreate, db: Session = Depends(get_db)):
+        db_user = crud.get_user_by_username(db, username=user.username)
+        if db_user:
+            raise HTTPException(status_code=400, detail="Имя пользователя уже используется")
+        db_user = crud.get_user_by_email(db, email=user.email)
+        if db_user:
+            raise HTTPException(status_code=400, detail="Email уже зарегистрирован")
+        return crud.create_user(db=db, user=user)
+
+    @staticmethod
+    def readUsersMeAction(current_user: schemas.UserResponse = Depends(get_current_user)):
+        return current_user
+
+    @staticmethod
+    def registerPageAction(request: Request):
+        return templates.TemplateResponse("register.html", get_context(request))
+
+    @staticmethod
+    def loginPageAction(request: Request):
+        return templates.TemplateResponse("login.html", get_context(request))
+
+    @staticmethod
+    def logoutPageAction():
+        response = RedirectResponse(url="/", status_code=303)
+        response.delete_cookie(key="access_token")
+        return response
+
+    @staticmethod
+    def readRootAction(request: Request):
+        return templates.TemplateResponse("index.html", get_context(request))
+
+    def __str__(self):
+        return f"{self.__class__.__name__} работает для вас <3"
 
 @router.post("/register/", response_model=schemas.UserResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
