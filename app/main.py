@@ -82,11 +82,28 @@ async def add_current_user(request: Request, call_next):
 def to_kebab_case(func_name: str) -> str:
     return kebab_case_converter.sub(r'-\1', func_name).lower()
 
+def get_action_type(func: Callable) -> str:
+    docstring = func.__doc__
+    if docstring:
+        if 'Post' in docstring:
+            return 'POST'
+        elif 'Put' in docstring:
+            return 'PUT'
+        elif 'Patch' in docstring:
+            return 'PATCH'
+        elif 'Delete' in docstring:
+            return 'DELETE'
+        elif 'Options' in docstring:
+            return 'OPTIONS'
+        elif 'Head' in docstring:
+            return 'HEAD'
+    return 'GET'
+
 def register_action(router: APIRouter, name: str, func: Callable) -> None:
     action_name = python_action_mask.match(name).group('Name')
     action_type = python_action_mask.match(name).group('Type').upper()
     if action_type == '':
-        action_type = 'GET'
+        action_type = get_action_type(func)
     print(action_type, action_name)
     router.add_api_route(path=f'/{to_kebab_case(action_name)}', endpoint=func, methods=[action_type,])
     if action_name == 'Index':
