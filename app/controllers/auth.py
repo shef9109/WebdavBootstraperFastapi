@@ -14,8 +14,13 @@ router = APIRouter(
 
 class IndexController:
     @staticmethod
-    def PostTokenAction(response: Response, form_data: OAuth2PasswordRequestForm = Depends(),
+    def TokenAction(response: Response, form_data: OAuth2PasswordRequestForm = Depends(),
                            db: Session = Depends(get_db)):
+        """
+        Method for handling login
+        
+        @method post
+        """
         user = crud.get_user_by_username(db, username=form_data.username)
         if not user or not verify_password(form_data.password, user.hashed_password):
             raise HTTPException(status_code=400, detail="Неправильные имя пользователя или пароль")

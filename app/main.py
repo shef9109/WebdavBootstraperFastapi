@@ -21,6 +21,7 @@ python_controller_mask = re.compile(r'^(?P<Name>[^_]\w+)\.py$')
 python_controller_class_mask = re.compile(r'^(?P<Name>[^_]\w+)Controller$')
 python_action_mask = re.compile(r'^(?P<Type>(Post|Get|Put|Options|Head|Delete|Patch|))(?P<Name>[^_]\w+)Action$')
 kebab_case_converter = re.compile(r'((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))')
+docstring_method_mask = re.compile(r'\s+(@method)\s+(?P<Type>(get|post|put|options))')
 
 
 app = FastAPI(
@@ -82,28 +83,40 @@ async def add_current_user(request: Request, call_next):
 def to_kebab_case(func_name: str) -> str:
     return kebab_case_converter.sub(r'-\1', func_name).lower()
 
-def get_action_type(func: Callable) -> str:
+def get_action_type(func: Callable, name: str) -> str:
+    action_type = python_action_mask.match(name).group('Type').upper()
+    if action_type != '':
+        return action_type
+    print(action_type, name)
+
     docstring = func.__doc__
-    if docstring:
-        if 'Post' in docstring:
-            return 'POST'
-        elif 'Put' in docstring:
-            return 'PUT'
-        elif 'Patch' in docstring:
-            return 'PATCH'
-        elif 'Delete' in docstring:
-            return 'DELETE'
-        elif 'Options' in docstring:
-            return 'OPTIONS'
-        elif 'Head' in docstring:
-            return 'HEAD'
+    if docstring is None:
+        return 'GET'
+    print(repr(docstring))
+    if (docstring_match := docstring_method_mask.search(docstring)) is not None:
+        return docstring_match.group('Type').upper()
+    
     return 'GET'
+    # if docstring:  
+    #     if 'Post' in docstring:
+    #         return 'POST'
+    #     elif 'Put' in docstring:
+    #         return 'PUT'
+    #     elif 'Patch' in docstring:
+    #         return 'PATCH'
+    #     elif 'Delete' in docstring:
+    #         return 'DELETE'
+    #     elif 'Options' in docstring:
+    #         return 'OPTIONS'
+    #     elif 'Head' in docstring:
+    #         return 'HEAD'
+    # return 'GET'
+    
 
 def register_action(router: APIRouter, name: str, func: Callable) -> None:
     action_name = python_action_mask.match(name).group('Name')
-    action_type = python_action_mask.match(name).group('Type').upper()
-    if action_type == '':
-        action_type = get_action_type(func)
+    # action_type = python_action_mask.match(name).group('Type').upper()
+    action_type = get_action_type(func, name)
     print(action_type, action_name)
     router.add_api_route(path=f'/{to_kebab_case(action_name)}', endpoint=func, methods=[action_type,])
     if action_name == 'Index':
