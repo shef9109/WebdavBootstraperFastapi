@@ -1,6 +1,7 @@
 from typing import Callable
 
 from fastapi import FastAPI, Request, APIRouter
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt
 from starlette.staticfiles import StaticFiles
@@ -10,6 +11,7 @@ import inspect
 from functools import partial
 from operator import is_not
 import importlib
+from types import ModuleType
 
 from app.resources import crud
 from app.database.db import Base, engine
@@ -22,6 +24,7 @@ python_controller_class_mask = re.compile(r'^(?P<Name>[^_]\w+)Controller$')
 python_action_mask = re.compile(r'^(?P<Type>(Post|Get|Put|Options|Head|Delete|Patch|))(?P<Name>[^_]\w+)Action$')
 kebab_case_converter = re.compile(r'((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))')
 docstring_method_mask = re.compile(r'\s+(@method)\s+(?P<Type>(get|post|put|options))')
+docstring_response_model_mask = re.compile(r'@response_model\s(?P<Name>\w+)')
 
 
 app = FastAPI(
@@ -51,12 +54,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Монтирование роутеров
-# app.include_router(auth.router)
-# app.include_router(users.router)
-# app.include_router(files.router)
-
-
 # Глобальная зависимость для передачи current_user в шаблоны
 @app.middleware("http")
 async def add_current_user(request: Request, call_next):
@@ -83,53 +80,54 @@ async def add_current_user(request: Request, call_next):
 def to_kebab_case(func_name: str) -> str:
     return kebab_case_converter.sub(r'-\1', func_name).lower()
 
+def get_response_model(func: Callable|type, module: ModuleType):
+    if hasattr(func, 'response_model'):
+        response_model = func.response_model
+        if type(response_model) == str:
+            module_class = getattr(module, response_model)
+            return module_class
+        if type(response_model) == type:
+            return response_model
+
+    docstring = func.__doc__
+    if docstring is not None:
+        if (docstring_match := docstring_response_model_mask.search(docstring)) is not None:
+            model_name = docstring_match.group('Name')
+            model_class = getattr(module, model_name, JSONResponse)
+            return model_class
+
+    return JSONResponse
+
 def get_action_type(func: Callable, name: str) -> str:
     action_type = python_action_mask.match(name).group('Type').upper()
     if action_type != '':
         return action_type
-    print(action_type, name)
-
     docstring = func.__doc__
     if docstring is None:
         return 'GET'
-    print(repr(docstring))
     if (docstring_match := docstring_method_mask.search(docstring)) is not None:
         return docstring_match.group('Type').upper()
     
     return 'GET'
-    # if docstring:  
-    #     if 'Post' in docstring:
-    #         return 'POST'
-    #     elif 'Put' in docstring:
-    #         return 'PUT'
-    #     elif 'Patch' in docstring:
-    #         return 'PATCH'
-    #     elif 'Delete' in docstring:
-    #         return 'DELETE'
-    #     elif 'Options' in docstring:
-    #         return 'OPTIONS'
-    #     elif 'Head' in docstring:
-    #         return 'HEAD'
-    # return 'GET'
-    
 
-def register_action(router: APIRouter, name: str, func: Callable) -> None:
+def register_action(router: APIRouter, name: str, func: Callable, module: ModuleType) -> None:
     action_name = python_action_mask.match(name).group('Name')
-    # action_type = python_action_mask.match(name).group('Type').upper()
     action_type = get_action_type(func, name)
-    print(action_type, action_name)
-    router.add_api_route(path=f'/{to_kebab_case(action_name)}', endpoint=func, methods=[action_type,])
+    response_type = get_response_model(func, module)
+    router.add_api_route(path=f'/{to_kebab_case(action_name)}', endpoint=func, methods=[action_type,], response_class=response_type)
     if action_name == 'Index':
-        router.add_api_route(path='/', endpoint=func, methods=[action_type,])
+        router.add_api_route(path='/', endpoint=func, methods=[action_type,], response_class=response_type)
 
-def create_routers(name: str) -> list[APIRouter]:
+def create_routers(name: str, module: ModuleType, cls: type) -> list[APIRouter]:
     controller_name = python_controller_class_mask.match(name).group('Name')
+    response_type = get_response_model(cls, module)
     routers = [APIRouter(
         prefix=f"/{to_kebab_case(controller_name)}" if not to_kebab_case(controller_name).startswith(
             '/') else to_kebab_case(controller_name),
-        tags=[name])]
+        tags=[name],
+        default_response_class=response_type)]
     if controller_name == 'Index':
-        routers.append(APIRouter(prefix='', tags=[name]))
+        routers.append(APIRouter(prefix='', tags=[name], default_response_class=response_type))
     return routers
 
 def bootstrap_controllers(app_instance: FastAPI):
@@ -141,34 +139,18 @@ def bootstrap_controllers(app_instance: FastAPI):
     # Фильтрованный список контроллеров по имени и классу
     all_controllers = filter(
         lambda name_cls: python_controller_class_mask.match(name_cls[0]),
-        ((name, cls) for module in controller_modules.values() for name, cls in
+        ((name, cls, module) for module in controller_modules.values() for name, cls in
          inspect.getmembers(module, inspect.isclass))
     )
-
-    # Создание контроллера из имени и класса
-    # create_router = lambda name, cls: (
-    #     controller_name := python_controller_class_mask.match(name).group('Name'),
-    #     router := APIRouter(
-    #         prefix=f"/{to_kebab_case(controller_name)}" if not to_kebab_case(controller_name).startswith(
-    #             '/') else to_kebab_case(controller_name),
-    #         tags=[name]
-    #     ),
-    #     list(map(lambda elem: register_action(router, *elem),
-    #         filter(lambda nf: python_action_mask.match(nf[0]), inspect.getmembers(cls, inspect.isfunction)))),
-    #     app.include_router(router),
-    #     cls
-    # )
-    controller_routers = [(name, cls, create_routers(name)) for name, cls in all_controllers]
-    for name, cls, routers in controller_routers:
+    controller_routers = [(name, cls, module, create_routers(name, module, cls)) for name, cls, module in all_controllers]
+    for name, cls, module, routers in controller_routers:
         actions = filter(lambda nf: python_action_mask.match(nf[0]), inspect.getmembers(cls, inspect.isfunction))
         for router in routers:
             for action in actions:
-                print(action)
-                register_action(router, action[0], action[1])
+                register_action(router, action[0], action[1], module)
             app_instance.include_router(router)
 
 
     return 1
 
-# if __name__ == "__main__":
 bootstrap_controllers(app)

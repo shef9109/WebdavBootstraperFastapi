@@ -3,6 +3,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from fastapi.responses import HTMLResponse
 
 from app.resources import crud
 from app.resources.auth import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_db
@@ -12,18 +13,23 @@ router = APIRouter(
     tags=["auth"],
 )
 
+
 class IndexController:
+
+    response_model = HTMLResponse
+
     @staticmethod
     def TokenAction(response: Response, form_data: OAuth2PasswordRequestForm = Depends(),
                            db: Session = Depends(get_db)):
-        """
-        Method for handling login
+        """Method for handling login
         
+        @response_model HTMLResponse
         @method post
         """
         user = crud.get_user_by_username(db, username=form_data.username)
         if not user or not verify_password(form_data.password, user.hashed_password):
-            raise HTTPException(status_code=400, detail="Неправильные имя пользователя или пароль")
+            # raise HTTPException(status_code=400, detail="Неправильные имя пользователя или пароль")
+            return "Неправильные имя пользователя или пароль"
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": user.username}, expires_delta=access_token_expires
