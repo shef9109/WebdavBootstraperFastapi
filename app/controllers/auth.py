@@ -1,29 +1,32 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from fastapi.responses import HTMLResponse
+from pydantic_xml import BaseXmlModel
 
 from app.resources import crud
 from app.resources.auth import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_db
 from app.resources.crud import verify_password
+from app.utils import templates, get_context
+from app.utilis.response import XMLResponse
+
 
 router = APIRouter(
     tags=["auth"],
 )
 
-
 class IndexController:
 
-    response_model = HTMLResponse
+    response_model = XMLResponse
 
     @staticmethod
     def TokenAction(response: Response, form_data: OAuth2PasswordRequestForm = Depends(),
                            db: Session = Depends(get_db)):
         """Method for handling login
         
-        @response_model HTMLResponse
+        @response_model XMLResponse
         @method post
         """
         user = crud.get_user_by_username(db, username=form_data.username)
@@ -45,6 +48,18 @@ class IndexController:
         return {"access_token": access_token, "token_type": "bearer"}
     def __str__(self):
         return f"{self.__class__.__name__} working for you <3"
+    
+    @staticmethod
+    def indexAction(request: Request):
+        return templates.TemplateResponse("index.html", get_context(request))
+    
+    @staticmethod
+    def registerAction(request: Request):
+        return templates.TemplateResponse("register.html", get_context(request))
+
+    @staticmethod
+    def loginAction(request: Request):
+        return templates.TemplateResponse("login.html", get_context(request))
 
 
 @router.post("/token/")

@@ -28,22 +28,10 @@ class UsersController:
         return current_user
 
     @staticmethod
-    def registerPageAction(request: Request):
-        return templates.TemplateResponse("register.html", get_context(request))
-
-    @staticmethod
-    def loginPageAction(request: Request):
-        return templates.TemplateResponse("login.html", get_context(request))
-
-    @staticmethod
     def logoutPageAction():
         response = RedirectResponse(url="/", status_code=303)
         response.delete_cookie(key="access_token")
         return response
-
-    @staticmethod
-    def readRootAction(request: Request):
-        return templates.TemplateResponse("index.html", get_context(request))
 
     def __str__(self):
         return f"{self.__class__.__name__} работает для вас <3"
