@@ -19,14 +19,14 @@ router = APIRouter(
 
 class IndexController:
 
-    response_model = XMLResponse
+    response_model = HTMLResponse
 
     @staticmethod
     def TokenAction(response: Response, form_data: OAuth2PasswordRequestForm = Depends(),
                            db: Session = Depends(get_db)):
         """Method for handling login
         
-        @response_model XMLResponse
+        @response_model HTMLResponse
         @method post
         """
         user = crud.get_user_by_username(db, username=form_data.username)

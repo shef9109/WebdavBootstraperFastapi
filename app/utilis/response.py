@@ -1,10 +1,12 @@
 import typing
-from fastapi import Response
-import pydantic_xml
+from fastapi.responses import Response
+from pydantic import BaseModel
+from pydantic_xml import BaseXmlModel, create_model
 from starlette.background import BackgroundTask
 
+
 class XMLResponse(Response):
-    media_type = "application/json"
+    media_type = "application/xml"
 
     def __init__(
         self,
@@ -17,6 +19,10 @@ class XMLResponse(Response):
         super().__init__(content, status_code, headers, media_type, background)
 
     def render(self, content: typing.Any) -> bytes:
+        if content is None:
+            return b""
+        if not isinstance(content, BaseXmlModel):
+            raise NotImplementedError
         return content.to_xml(
             pretty_print=True,
             encoding='UTF-8',
