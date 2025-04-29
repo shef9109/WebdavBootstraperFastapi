@@ -1,3 +1,4 @@
+from pathlib import Path
 
 from fastapi import Request, HTTPException, status, Depends
 from fastapi.responses import Response
@@ -14,17 +15,23 @@ from app.resources.auth import basic_auth
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def normalize_path(path: str) -> str:
+    path = unquote(path)
+    if not path.startswith("/"):
+        path = "/" + path
+    return os.path.normpath(path)
+
+BASE_FILES_PATH = Path(__file__).parent.parent.parent / "files"
+
+def get_user_path(user):
+    user_path = os.path.join(BASE_FILES_PATH, user)
+    os.makedirs(user_path, exist_ok=True)
+    return user_path
+
+
 class WebdavController:
     response_class = XMLResponse
-
-    def __init__(self):
-        self.fs = FileSystem()
-
-    def normalize_path(self, path: str) -> str:
-        path = unquote(path)
-        if not path.startswith("/"):
-            path = "/" + path
-        return os.path.normpath(path)
 
     def OptionsIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
         """
@@ -136,16 +143,19 @@ class WebdavController:
             logger.error(f"GET error for path {path}: {e}")
             raise HTTPException(status_code=500, detail="Internal server error")
 
-    async def PutIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
+    @staticmethod
+    async def PutIndexAction(request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
         """
         @method put
-        @response_model XMLResponse
+        @response_model Response
         """
         try:
-            path = self.normalize_path(path)
+            user_path = get_user_path(user.username)
+            user_path = normalize_path(user_path)
             content = await request.body()
-            self.fs.create_resource(path, content=content, is_collection=False)
-            return XMLResponse(status_code=status.HTTP_201_CREATED)
+            with open(user_path + '/test.txt', "wb") as f:
+                f.write(content)
+            return Response(status_code=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error(f"PUT error for path {path}: {e}")
             raise HTTPException(status_code=500, detail="Internal server error")

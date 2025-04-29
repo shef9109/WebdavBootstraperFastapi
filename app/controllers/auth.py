@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -31,7 +33,7 @@ class IndexController:
                     db: Session = Depends(get_db)):
         """Method for handling login
         
-        @response_model HTMLResponse
+        @response_model dict
         @method post
         """
         user = crud.get_user_by_username(db, username=form_data.username)

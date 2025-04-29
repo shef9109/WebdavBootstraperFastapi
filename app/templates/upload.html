@@ -18,7 +18,9 @@
     document.getElementById("upload-form").addEventListener("submit", async function(event) {
         event.preventDefault();
         const fileInput = document.getElementById("file");
+        const filenameInput = document.getElementById("filename");
         const file = fileInput.files[0];
+        const filename = filenameInput.value.trim() || file.name;
         const messageDiv = document.getElementById("message");
 
         if (!file) {
@@ -29,11 +31,13 @@
 
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("filename", filename);
 
-        const response = await fetch("/upload/", {
-            method: "POST",
+        const response = await fetch(`/webdav/index?path=${encodeURIComponent(filename)}`, {
+            method: "PUT",
             body: formData,
             credentials: 'include',
+
         });
 
         let data;
@@ -43,7 +47,7 @@
             data = { detail: "Непредвиденная ошибка" };
         }
 
-        if (response.status === 200) {
+        if (response.status === 200 || response.status === 201) {
             messageDiv.style.color = "green";
             messageDiv.innerHTML = `<p>${data.info}</p>`;
             fileInput.value = "";
