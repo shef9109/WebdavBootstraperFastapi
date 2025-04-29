@@ -1,139 +1,209 @@
-import io
-import logging
+from fastapi import APIRouter, Request, HTTPException, status
+from fastapi.responses import Response
+from app.utilis.response import XMLResponse
+from app.models.webdav import Prop, PropStat, Response as WebdavResponse, Multistatus
+from app.utilis.filesystem import FileSystem
+from urllib.parse import unquote
+import os
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
-from starlette.responses import RedirectResponse
+router = APIRouter(tags=["webdav"])
 
-from app.models import models
-from app.resources.auth import get_current_user
-from app.utils import templates, get_context  # Импортируем новую функцию
-from webdav.client import get_webdav_client, WEBDAV_OPTIONS
+class WebdavController:
+    def __init__(self):
+        self.fs = FileSystem()
+        self.router = router
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+    def normalize_path(self, path: str) -> str:
+        path = unquote(path)
+        if not path.startswith("/"):
+            path = "/" + path
+        return os.path.normpath(path)
 
-router = APIRouter(
-    tags=["files"]
-)
+    @router.options("/{path:path}", response_class=Response)
+    async def options_action(self, request: Request, path: str = "") -> Response:
+        """
+        @method options
+        """
+        headers = {
+            "DAV": "1, 2",
+            "Allow": "OPTIONS, PROPFIND, PROPPATCH, MKCOL, GET, PUT, DELETE, COPY, MOVE, LOCK, UNLOCK",
+            "MS-Author-Via": "DAV"
+        }
+        return Response(status_code=status.HTTP_200_OK, headers=headers)
 
-from datetime import timedelta
+    @router.api_route("/{path:path}", methods=["PROPFIND"], response_class=XMLResponse)
+    async def propfind_action(self, request: Request, path: str = "") -> Multistatus:
+        """
+        @method propfind
+        @response_model Multistatus
+        """
+        path = self.normalize_path(path)
+        resource = self.fs.get_resource(path)
+        if not resource:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-
-from app.resources import crud
-from app.resources.auth import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_db
-from app.resources.crud import verify_password
-
-router = APIRouter(
-    tags=["auth"],
-)
-
-class FilesController:
-    @staticmethod
-    def FileAction(response: Response, form_data: OAuth2PasswordRequestForm = Depends(),
-                           db: Session = Depends(get_db)):
-        user = crud.get_user_by_username(db, username=form_data.username)
-        if not user or not verify_password(form_data.password, user.hashed_password):
-            raise HTTPException(status_code=400, detail="Неправильные имя пользователя или пароль")
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": user.username}, expires_delta=access_token_expires
+        depth = request.headers.get("Depth", "0").lower()
+        responses = []
+        prop = Prop(
+            content_type=resource.properties["getcontenttype"],
+            content_length=resource.properties["getcontentlength"]
         )
-        response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            secure=False,
-            samesite="lax",
-            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        propstat = PropStat(status="HTTP/1.1 200 OK", prop=prop)
+        responses.append(WebdavResponse(href=path, propstat=propstat))
+
+        if depth != "0" and resource.is_collection:
+            for child_path in self.fs.list_collection(path):
+                child = self.fs.get_resource(child_path)
+                prop = Prop(
+                    content_type=child.properties["getcontenttype"],
+                    content_length=child.properties["getcontentlength"]
+                )
+                propstat = PropStat(status="HTTP/1.1 200 OK", prop=prop)
+                responses.append(WebdavResponse(href=child_path, propstat=propstat))
+
+        multistatus = Multistatus(response=responses[0])
+        return XMLResponse(content=multistatus, status_code=status.HTTP_207_MULTI_STATUS)
+
+    @router.api_route("/{path:path}", methods=["PROPPATCH"], response_class=XMLResponse)
+    async def proppatch_action(self, request: Request, path: str = "") -> Multistatus:
+        """
+        @method proppatch
+        @response_model Multistatus
+        """
+        path = self.normalize_path(path)
+        resource = self.fs.get_resource(path)
+        if not resource:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+        prop = Prop(
+            content_type=resource.properties["getcontenttype"],
+            content_length=resource.properties["getcontentlength"]
         )
-        return {"access_token": access_token, "token_type": "bearer"}
+        propstat = PropStat(status="HTTP/1.1 200 OK", prop=prop)
+        response = WebdavResponse(href=path, propstat=propstat)
+        multistatus = Multistatus(response=response)
+        return XMLResponse(content=multistatus, status_code=status.HTTP_207_MULTI_STATUS)
+
+    @router.api_route("/{path:path}", methods=["MKCOL"], response_class=Response)
+    async def mkcol_action(self, request: Request, path: str = "") -> Response:
+        """
+        @method mkcol
+        """
+        path = self.normalize_path(path)
+        if self.fs.get_resource(path):
+            raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.fs.create_resource(path, is_collection=True)
+        return Response(status_code=status.HTTP_201_CREATED)
+
+    @router.get("/{path:path}", response_class=Response)
+    async def get_action(self, request: Request, path: str = "") -> Response:
+        """
+        @method get
+        """
+        path = self.normalize_path(path)
+        resource = self.fs.get_resource(path)
+        if not resource or resource.is_collection:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+        headers = {
+            "Content-Type": resource.properties["getcontenttype"],
+            "Content-Length": str(resource.properties["getcontentlength"])
+        }
+        return Response(content=resource.content, headers=headers, status_code=status.HTTP_200_OK)
+
+    @router.put("/{path:path}", response_class=Response)
+    async def put_action(self, request: Request, path: str = "") -> Response:
+        """
+        @method put
+        """
+        path = self.normalize_path(path)
+        content = await request.body()
+        self.fs.create_resource(path, content=content, is_collection=False)
+        return Response(status_code=status.HTTP_201_CREATED)
+
+    @router.delete("/{path:path}", response_class=Response)
+    async def delete_action(self, request: Request, path: str = "") -> Response:
+        """
+        @method delete
+        """
+        path = self.normalize_path(path)
+        resource = self.fs.get_resource(path)
+        if not resource:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        self.fs.delete_resource(path)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.api_route("/{path:path}", methods=["COPY"], response_class=Response)
+    async def copy_action(self, request: Request, path: str = "") -> Response:
+        """
+        @method copy
+        """
+        path = self.normalize_path(path)
+        destination = self.normalize_path(
+            request.headers.get("Destination", "").replace(request.url.scheme + "://" + request.url.netloc, "")
+        )
+        resource = self.fs.get_resource(path)
+        if not resource:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        self.fs.create_resource(destination, content=resource.content, is_collection=resource.is_collection)
+        return Response(status_code=status.HTTP_201_CREATED)
+
+    @router.api_route("/{path:path}", methods=["MOVE"], response_class=Response)
+    async def move_action(self, request: Request, path: str = "") -> Response:
+        """
+        @method move
+        """
+        path = self.normalize_path(path)
+        destination = self.normalize_path(
+            request.headers.get("Destination", "").replace(request.url.scheme + "://" + request.url.netloc, "")
+        )
+        resource = self.fs.get_resource(path)
+        if not resource:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        self.fs.create_resource(destination, content=resource.content, is_collection=resource.is_collection)
+        self.fs.delete_resource(path)
+        return Response(status_code=status.HTTP_201_CREATED)
+
+    @router.api_route("/{path:path}", methods=["LOCK"], response_class=XMLResponse)
+    async def lock_action(self, request: Request, path: str = "") -> Multistatus:
+        """
+        @method lock
+        @response_model Multistatus
+        """
+        path = self.normalize_path(path)
+        resource = self.fs.get_resource(path)
+        if not resource:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+        lock_token = f"opaquelocktoken:{uuid.uuid4()}"
+        resource.locks[lock_token] = {"depth": "infinity", "timeout": "Infinite", "owner": ""}
+
+        prop = Prop(
+            content_type=resource.properties["getcontenttype"],
+            content_length=resource.properties["getcontentlength"]
+        )
+        propstat = PropStat(status="HTTP/1.1 200 OK", prop=prop)
+        response = WebdavResponse(href=path, propstat=propstat)
+        multistatus = Multistatus(response=response)
+        headers = {"Lock-Token": f"<{lock_token}>"}
+        return XMLResponse(content=multistatus, status_code=status.HTTP_200_OK, headers=headers)
+
+    @router.api_route("/{path:path}", methods=["UNLOCK"], response_class=Response)
+    async def unlock_action(self, request: Request, path: str = "") -> Response:
+        """
+        @method unlock
+        """
+        path = self.normalize_path(path)
+        resource = self.fs.get_resource(path)
+        if not resource:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+        lock_token = request.headers.get("Lock-Token", "").strip("<>")
+        if lock_token not in resource.locks:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT)
+        del resource.locks[lock_token]
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     def __str__(self):
-        return f"{self.__class__.__name__} working for you <3"
-
-
-@router.post("/token/")
-def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestForm = Depends(),
-                           db: Session = Depends(get_db)):
-    user = crud.get_user_by_username(db, username=form_data.username)
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="Неправильные имя пользователя или пароль")
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-
-@router.get("/upload", response_class=HTMLResponse)
-async def upload_page(request: Request):
-    return templates.TemplateResponse("upload.html", get_context(request))
-
-
-@router.get("/files", response_class=HTMLResponse)
-async def list_files(request: Request, current_user: models.User = Depends(get_current_user)):
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    client = get_webdav_client()
-    try:
-        remote_path = f"/{current_user.username}/"
-        client.mkdir(remote_path)
-        files = client.list(remote_path)
-        files = [f for f in files if not client.is_dir(remote_path + f)]
-        file_names = [f.split('/')[-1] for f in files]
-        return templates.TemplateResponse("files.html", get_context(request, file_names))
-    except Exception as e:
-        logger.error(f"Ошибка при получении списка файлов для пользователя {current_user.username}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Ошибка при получении списка файлов: {str(e)}")
-
-
-@router.post("/upload/")
-async def upload_file(file: UploadFile = File(...), current_user: models.User = Depends(get_current_user)):
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    client = get_webdav_client()
-    try:
-        file_contents = await file.read()
-        remote_path = f"/{current_user.username}/{file.filename}"
-        client.mkdir(f"/{current_user.username}/")
-        file_stream = io.BytesIO(file_contents)
-        client.upload_to(file_stream, remote_path)
-        logger.info(f"Пользователь {current_user.username} загрузил файл {file.filename}")
-        return {"filename": file.filename, "path": remote_path,
-                "info": f"File '{file.filename}' uploaded successfully."}
-    except Exception as e:
-        logger.error(f"Ошибка при загрузке файла {file.filename} пользователем {current_user.username}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке файла: {str(e)}")
-
-
-@router.get("/files/{filename}", response_class=FileResponse)
-async def get_file(filename: str, current_user: models.User = Depends(get_current_user)):
-    return RedirectResponse(url=f"{WEBDAV_OPTIONS['webdav_hostname']}{current_user.username}/{filename}")
-
-
-@router.delete("/files/{filename}")
-async def delete_file(filename: str, current_user: models.User = Depends(get_current_user)):
-    client = get_webdav_client()
-
-    try:
-        remote_path = f"/{current_user.username}/{filename}"
-        if not client.check(remote_path):
-            logger.warning(f"Файл {filename} для пользователя {current_user.username} не найден.")
-            raise HTTPException(status_code=404, detail="Файл не найден.")
-        client.clean(remote_path)
-        logger.info(f"Пользователь {current_user.username} удалил файл {filename}")
-        return JSONResponse(content={"info": f"Файл '{filename}' успешно удален."})
-    except Exception as e:
-        logger.error(f"Ошибка при удалении файла {filename} пользователем {current_user.username}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Ошибка при удалении файла: {str(e)}")
+        return f"{self.__class__.__name__} serving WebDAV requests" 

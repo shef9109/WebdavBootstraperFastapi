@@ -13,9 +13,9 @@ from types import ModuleType
 
 python_controller_mask = re.compile(r'^(?P<Name>[^_]\w+)\.py$')
 python_controller_class_mask = re.compile(r'^(?P<Name>[^_]\w+)Controller$')
-python_action_mask = re.compile(r'^(?P<Type>(Post|Get|Put|Options|Head|Delete|Patch|))(?P<Name>[^_]\w+)Action$')
+python_action_mask = re.compile(r'^(?P<Type>(Get|Post|Put|Options|Head|Delete|Patch|Propfind|Move|Lock|Unlock|Proppatch|Mkcol|Copy|))(?P<Name>[^_]\w+)Action$')
 kebab_case_converter = re.compile(r'((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))')
-docstring_method_mask = re.compile(r'\s+(@method)\s+(?P<Type>(get|post|put|options))')
+docstring_method_mask = re.compile(r'\s+(@method)\s+(?P<Type>(get|post|put|options|head|delete|patch|propfind|move|lock|unlock|proppatch|mkcol|copy|))')
 docstring_response_model_mask = re.compile(r'@response_model\s(?P<Name>\w+)')
 
 
