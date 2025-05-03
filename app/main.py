@@ -1,31 +1,16 @@
-from typing import Callable
+import re
 
-from fastapi import FastAPI, Request, APIRouter
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt
 from starlette.staticfiles import StaticFiles
-import os
-import re
-import inspect
-from functools import partial
-from operator import is_not
-import importlib
-from types import ModuleType
 
-from app.resources import crud
 from app.database.db import Base, engine
+from app.resources import crud
 from app.resources.auth import SECRET_KEY, ALGORITHM
 from app.resources.auth import get_db
-from app.controllers import auth, users, files
 from app.utilis.bootstrap import bootstrap_controllers
 
-python_controller_mask = re.compile(r'^(?P<Name>[^_]\w+)\.py$')
-python_controller_class_mask = re.compile(r'^(?P<Name>[^_]\w+)Controller$')
-python_action_mask = re.compile(r'^(?P<Type>(Post|Get|Put|Options|Head|Delete|Patch|))(?P<Name>[^_]\w+)Action$')
-kebab_case_converter = re.compile(r'((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))')
-docstring_method_mask = re.compile(r'\s+(@method)\s+(?P<Type>(get|post|put|options))')
-docstring_response_model_mask = re.compile(r'@response_model\s(?P<Name>\w+)')
 
 
 app = FastAPI(

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from fastapi.responses import HTMLResponse, JSONResponse
+from http import HTTPStatus
 from pydantic_xml import BaseXmlModel
 
 from app.resources import crud
@@ -35,7 +36,7 @@ class IndexController:
         """
         user = crud.get_user_by_username(db, username=form_data.username)
         if not user or not verify_password(form_data.password, user.hashed_password):
-            return "Неправильные имя пользователя или пароль"
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Неправильные имя пользователя или пароль")
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": user.username}, expires_delta=access_token_expires
