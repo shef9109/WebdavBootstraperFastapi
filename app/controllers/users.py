@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.resources import crud
-from app.resources.app_passwords import get_passwords_of_user
+from app.resources.app_passwords import get_passwords_of_user, create_password, delete_password
 from app.resources.auth import get_current_user, get_db
 from app.schemas import schemas
 from app.utils import templates, get_context
@@ -84,9 +84,16 @@ class UsersController:
 
         data = get_passwords_of_user(db, current_user.id)
         print(data)
-        return templates.TemplateResponse(request=request, name="panelpass.html", context={"passwords":[
-            schemas.AppPaswords(id=1, name_password="Test1", created_at=datetime.fromisoformat("2025-12-12T12:00:00"))
-        ]} | get_context(request))
+        return templates.TemplateResponse(request=request, name="panelpass.html", context={"passwords": data} | get_context(request))
+
+    @staticmethod
+    def GetCreatePasswordAction(request: Request, current_user: schemas.UserResponse = Depends(get_current_user), db: Session = Depends(get_db)):
+        """
+        @method get
+        @response_model HTMLResponse
+        """
+        data = create_password(db, current_user.id)
+        return templates.TemplateResponse(request=request, name="createpassword.html", context=get_context(request) | {"data": data})
 
     def __str__(self):
         return f"{self.__class__.__name__} работает для вас <3"

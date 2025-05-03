@@ -1,5 +1,8 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
+
+class BaseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 class UserBase(BaseModel):
     username: str
@@ -25,7 +28,13 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: str | None = None
 
-class AppPaswords(BaseModel):
+class AppPasswords(BaseSchema):
     id: int
     name_password: str
     created_at: datetime
+
+class CreatePass(BaseSchema):
+    id: int
+    name_password: str
+    created_at: datetime
+    password: str
