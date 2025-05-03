@@ -10,7 +10,7 @@ import os
 import uuid
 import logging
 
-from app.resources.auth import basic_auth
+from app.repositories.auth import basic_auth
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

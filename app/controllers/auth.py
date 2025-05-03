@@ -7,14 +7,14 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from http import HTTPStatus
 from pydantic_xml import BaseXmlModel
 
-from app.resources import crud
-from app.resources.auth import (
+from app.repositories import crud
+from app.repositories.auth import (
     create_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     get_db,
     basic_auth,
 )
-from app.resources.crud import verify_password
+from app.repositories.crud import verify_password
 from app.utils import templates, get_context
 from app.utilis.response import XMLResponse
 

@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordBearer, HTTPBasic, HTTPBasicCredentia
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-import app.resources.crud as crud
+import app.repositories.crud as crud
 from app.database.db import SessionLocal
 
 load_dotenv()
@@ -115,11 +115,12 @@ def basic_auth(credentials: HTTPBasicCredentials = Depends(security_basic), db: 
             detail="Неверные учетные данные",
             headers={"WWW-Authenticate": "Basic"},
         )
-    # Verify password
-    if not crud.verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверные учетные данные",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return user
+
+    for password in user.passwords:
+        if crud.verify_password(credentials.password, password.hashed_password):
+            return password.name_password
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Неверные учетные данные",
+        headers={"WWW-Authenticate": "Basic"},
+    )

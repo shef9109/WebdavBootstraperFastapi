@@ -6,9 +6,9 @@ from jose import jwt
 from starlette.staticfiles import StaticFiles
 
 from app.database.db import Base, engine
-from app.resources import crud
-from app.resources.auth import SECRET_KEY, ALGORITHM
-from app.resources.auth import get_db
+from app.repositories import crud
+from app.repositories.auth import SECRET_KEY, ALGORITHM
+from app.repositories.auth import get_db
 from app.utilis.bootstrap import bootstrap_controllers
 
 

@@ -13,11 +13,8 @@ class UserCreate(UserBase):
     password: str
 
 
-class UserResponse(UserBase):
+class UserResponse(BaseSchema):
     id: int
-
-    class Config:
-        orm_mode = True
 
 
 class Token(BaseModel):

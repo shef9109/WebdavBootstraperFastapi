@@ -3,40 +3,115 @@
 {% block title %}Panel for create password for File Managers{% endblock %}
 
 {% block content %}
-    <table>
-        <thead>
-            <tr>
-                <th>
-                    ID
-                </th>
-                <th>
-                    Имя пароля
-                </th>
-                <th>
-                    Создан в 
-                </th>
-                <th>
-                    Удалить
-                </th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for elem in passwords %}
-                <tr>
-                    <td>
-                        {{elem.id}}
-                    </td>
-                    <td>
-                        {{elem.name_pass}}
-                    </td>
-                    <td>
-                        {{elem.created_at}}
-                    </td>
-                    <td>
-                        <a href="#">Удалить</a>
-                    </td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="row justify-content-end mb-5">
+    <div class="col-4">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newPassModal">
+            Create new app password
+        </button>
+    </div>
+</div>
+
+
+<table class="table">
+    <thead>
+    <tr>
+        <th>
+            ID
+        </th>
+        <th>
+            Password Name
+        </th>
+        <th>
+            Created at...
+        </th>
+        <th>
+        </th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for elem in passwords %}
+    <tr>
+        <td>
+            {{elem.id}}
+        </td>
+        <td>
+            {{elem.name_password}}
+        </td>
+        <td>
+            {{elem.created_at}}
+        </td>
+        <td>
+            <a href="#" onclick="deletePassword( {{ elem.id }} )"><i class="fa fa-trash-o" style="color:red"></i></a>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+
+<div class="modal fade" id="newPassModal" tabindex="-1" aria-labelledby="newPassModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="newPassModalLabel">New password</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="passname" class="form-label">Name of app password</label>
+                    <input type="text" class="form-control" id="passname" placeholder="Pass for Windows Explorer">
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" id="create-pass" class="btn btn-primary">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModal" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h1 class="modal-title fs-5" id="errorModalHeading">Error!</h1>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        Error occurred!
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const btn = document.querySelector('#create-pass');
+    btn.addEventListener('click', (e) => {
+        const passname = document.querySelector("#passname").value;
+        document.location.href = `/users/create-password/?passname=${passname}`;
+    });
+
+    async function deletePassword(id) {
+        const response = await fetch(`/users/password/?id=${id}`, {
+            method: "DELETE",
+        });
+
+        if (response.status === 204) {
+            setTimeout(() => {
+                window.location.href = "/users/panel-password";
+            }, 100);
+        } else {
+            const myModal = new bootstrap.Modal(document.querySelector('#errorModal'));
+            myModal.show();
+
+        }
+    }
+</script>
 {% endblock %}
