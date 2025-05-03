@@ -11,9 +11,6 @@ from app.resources.auth import (
     create_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     get_db,
-    generate_otp_secret,
-    get_totp_uri,
-    verify_otp_code,
     basic_auth,
 )
 from app.resources.crud import verify_password
@@ -88,29 +85,3 @@ def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestF
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
-
-@router.post("/otp/setup")
-def otp_setup(user: Session = Depends(basic_auth), db: Session = Depends(get_db)):
-    """Generate OTP secret and provisioning URI for user"""
-    if user.otp_secret is None:
-        secret = generate_otp_secret()
-        user.otp_secret = secret
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    else:
-        secret = user.otp_secret
-    uri = get_totp_uri(secret, user.username)
-    return {"otp_secret": secret, "otp_uri": uri}
-
-
-@router.post("/otp/verify")
-def otp_verify(code: str, user: Session = Depends(basic_auth)):
-    """Verify OTP code"""
-    if user.otp_secret is None:
-        raise HTTPException(status_code=400, detail="OTP not setup for user")
-    if verify_otp_code(user.otp_secret, code):
-        return {"verified": True}
-    else:
-        raise HTTPException(status_code=400, detail="Invalid OTP code")

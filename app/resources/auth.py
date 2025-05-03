@@ -1,5 +1,4 @@
 import os
-import pyotp
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
@@ -107,17 +106,6 @@ async def get_current_active_user(
             headers={"WWW-Authenticate": "Basic"},
         )
     return user
-
-def generate_otp_secret() -> str:
-    return pyotp.random_base32()
-
-def get_totp_uri(secret: str, username: str, issuer_name: str = "WebdavBootstraperFastapi") -> str:
-    totp = pyotp.TOTP(secret)
-    return totp.provisioning_uri(name=username, issuer_name=issuer_name)
-
-def verify_otp_code(secret: str, code: str) -> bool:
-    totp = pyotp.TOTP(secret)
-    return totp.verify(code)
 
 def basic_auth(credentials: HTTPBasicCredentials = Depends(security_basic), db: Session = Depends(get_db)):
     user = crud.get_user_by_username(db, username=credentials.username)
