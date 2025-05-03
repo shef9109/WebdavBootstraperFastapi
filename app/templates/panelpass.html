@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Panel for create password for File Managers{% endblock %}
+
+{% block content %}
+    <table>
+        <thead>
+            <tr>
+                <th>
+                    ID
+                </th>
+                <th>
+                    Имя пароля
+                </th>
+                <th>
+                    Создан в 
+                </th>
+                <th>
+                    Удалить
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for elem in passwords %}
+                <tr>
+                    <td>
+                        {{elem.id}}
+                    </td>
+                    <td>
+                        {{elem.name_pass}}
+                    </td>
+                    <td>
+                        {{elem.created_at}}
+                    </td>
+                    <td>
+                        <a href="#">Удалить</a>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
