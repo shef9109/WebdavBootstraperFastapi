@@ -24,3 +24,12 @@ class AppPasswords(Base):
     hashed_password:Mapped[str]
     name_password:Mapped[str]
     created_at:Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+class FileSystem(Base):
+    __tablename__ = "files"
+
+    fname:Mapped[str] = mapped_column(primary_key=True)
+    vpath:Mapped[str]
+    owner_id:Mapped[int] = mapped_column(ForeignKey('users.id'))
+    created_at:Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    updated_at:Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
