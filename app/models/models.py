@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, TIMESTAMP, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from app.database.db import Base
 
@@ -15,7 +15,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     #otp_secret = Column(String, nullable=True)
-    passwords:Mapped[List["AppPasswords"]] = relationship()
+    passwords: Mapped[Optional[List["AppPasswords"]]] = relationship()
 
 class AppPasswords(Base):
     __tablename__ = "app_passwords"
