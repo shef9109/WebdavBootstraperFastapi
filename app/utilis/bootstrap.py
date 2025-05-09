@@ -70,11 +70,14 @@ def register_action(router: APIRouter, name: str, func: Callable, module: Module
     action_type = get_action_type(func, name)
     response_type = get_response_model(func, module)
     path_params = get_path_params(func)
-    path = f'/{to_kebab_case(action_name)}{path_params}'
 
-    router.add_api_route(path=path, endpoint=func, methods=[action_type,], response_class=response_type, response_model=None)
     if action_name.lower() == 'index':
-        router.add_api_route(path='/', endpoint=func, methods=[action_type,], response_class=response_type)
+        path = path_params if path_params != '' else '/'
+        router.add_api_route(path=path, endpoint=func, methods=[action_type,], response_class=response_type)
+    else:
+        path = f'/{to_kebab_case(action_name)}{path_params}'
+        router.add_api_route(path=path, endpoint=func, methods=[action_type, ], response_class=response_type)
+
 
 def create_routers(name: str, module: ModuleType, cls: type) -> list[APIRouter]:
     controller_name = python_controller_class_mask.match(name).group('Name')
