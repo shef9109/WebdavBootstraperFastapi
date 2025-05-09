@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException, status
 from fastapi.responses import Response
 from app.utilis.response import XMLResponse
-from app.models.webdav import Prop, PropStat, Response as WebdavResponse, Multistatus
+from app.schemas.webdav import Prop, PropStat, Response as WebdavResponse, Multistatus
 from app.utilis.filesystem import FileSystem
 from urllib.parse import unquote
 import os

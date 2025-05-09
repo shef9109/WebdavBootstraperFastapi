@@ -3,6 +3,7 @@ wsgidav.yaml
 #папка с файлами
 uploads
 app.db
+storage/**
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

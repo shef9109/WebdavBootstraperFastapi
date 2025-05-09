@@ -1,264 +1,172 @@
 from pathlib import Path
 
-from fastapi import Request, HTTPException, status, Depends
+from fastapi import Request, status, Depends
 from fastapi.responses import Response
+from sqlalchemy.orm import Session
+from starlette.responses import StreamingResponse
+
+from app.repositories.files import get_file
+from app.schemas.schemas import UserAuth
+from app.utilis.formatters import parse_int, builddict
 from app.utilis.response import XMLResponse
-from app.models.webdav import Prop, PropStat, Response as WebdavResponse, Multistatus
+from app.models.webdav import ROOT, EMEMBER
+from app.schemas.webdav import Prop, PropStat, Response as WebdavResponse, Multistatus
 from app.utilis.filesystem import FileSystem
 from urllib.parse import unquote, urlparse
 import os
 import uuid
 import logging
-
-from app.repositories.auth import basic_auth
+from app.repositories.auth import get_db, basic_auth
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+BYTES_PER_RESPONSE = 512
 
-def normalize_path(path: str) -> str:
-    path = unquote(path)
-    if not path.startswith("/"):
-        path = "/" + path
-    return os.path.normpath(path)
+all_props = ['name', 'parentname', 'href', 'ishidden', 'isreadonly', 'getcontenttype',
+             'contentclass', 'getcontentlanguage', 'creationdate', 'lastaccessed', 'getlastmodified',
+             'getcontentlength', 'iscollection', 'isstructureddocument', 'defaultdocument',
+             'displayname', 'isroot', 'resourcetype']
+basic_props = ['name', 'getcontenttype', 'getcontentlength', 'creationdate', 'getlastmodified', 'iscollection']
 
-BASE_FILES_PATH = Path(__file__).parent.parent.parent / "files"
 
-def get_user_path(user):
-    user_path = os.path.join(BASE_FILES_PATH, user)
-    os.makedirs(user_path, exist_ok=True)
-    return user_path
+async def get_body(request: Request):
+    return await request.body()
 
 
 class WebdavController:
-    response_class = XMLResponse
-
-    def OptionsIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method options
-        @response_model XMLResponse
-        """
-        try:
-            headers = {
-                "DAV": "1, 2",
-                "Allow": "OPTIONS, PROPFIND, PROPPATCH, MKCOL, GET, PUT, DELETE, COPY, MOVE, LOCK, UNLOCK",
-                "MS-Author-Via": "DAV"
-            }
-            return Response(status_code=status.HTTP_200_OK, headers=headers)
-        except Exception as e:
-            logger.error(f"OPTIONS error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
-
-    def PropfindIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method propfind
-        @response_model XMLResponse
-        """
-        try:
-            path = self.normalize_path(path)
-            resource = self.fs.get_resource(path)
-            if not resource:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
-
-            depth = request.headers.get("Depth", "0").lower()
-            responses = []
-            prop = Prop(
-                content_type=resource.properties.get("getcontenttype", ""),
-                content_length=resource.properties.get("getcontentlength", 0)
-            )
-            propstat = PropStat(status="HTTP/1.1 200 OK", prop=prop)
-            responses.append(WebdavResponse(href=path, propstat=propstat))
-
-            if depth != "0" and resource.is_collection:
-                for child_path in self.fs.list_collection(path):
-                    child = self.fs.get_resource(child_path)
-                    prop = Prop(
-                        content_type=child.properties.get("getcontenttype", ""),
-                        content_length=child.properties.get("getcontentlength", 0)
-                    )
-                    propstat = PropStat(status="HTTP/1.1 200 OK", prop=prop)
-                    responses.append(WebdavResponse(href=child_path, propstat=propstat))
-
-            multistatus = Multistatus(response=responses)
-            return XMLResponse(content=multistatus, status_code=status.HTTP_207_MULTI_STATUS)
-        except Exception as e:
-            logger.error(f"PROPFIND error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
-
-    def ProppatchIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method proppatch
-        @response_model XMLResponse
-        """
-        try:
-            path = self.normalize_path(path)
-            resource = self.fs.get_resource(path)
-            if not resource:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
-
-            prop = Prop(
-                content_type=resource.properties.get("getcontenttype", ""),
-                content_length=resource.properties.get("getcontentlength", 0)
-            )
-            propstat = PropStat(status="HTTP/1.1 200 OK", prop=prop)
-            response = WebdavResponse(href=path, propstat=propstat)
-            multistatus = Multistatus(response=response)
-            return XMLResponse(content=multistatus, status_code=status.HTTP_207_MULTI_STATUS)
-        except Exception as e:
-            logger.error(f"PROPPATCH error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
-
-    def MkcolIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method mkcol
-        @response_model XMLResponse
-        """
-        try:
-            path = self.normalize_path(path)
-            if self.fs.get_resource(path):
-                raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED, detail="Resource already exists")
-            self.fs.create_resource(path, is_collection=True)
-            return Response(status_code=status.HTTP_201_CREATED)
-        except Exception as e:
-            logger.error(f"MKCOL error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
-
-    def GetIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method get
-        @response_model XMLResponse
-        """
-        try:
-            path = self.normalize_path(path)
-            resource = self.fs.get_resource(path)
-            if not resource or resource.is_collection:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-
-            headers = {
-                "Content-Type": resource.properties.get("getcontenttype", "application/octet-stream"),
-                "Content-Length": str(resource.properties.get("getcontentlength", 0))
-            }
-            return Response(content=resource.content, headers=headers, status_code=status.HTTP_200_OK)
-        except Exception as e:
-            logger.error(f"GET error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
 
     @staticmethod
-    async def PutIndexAction(request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
+    def GetIndexAction(request: Request, file_path: str = '', auth: UserAuth = Depends(basic_auth),
+                       db: Session = Depends(get_db)):
         """
-        @method put
-        @response_model Response
-        """
-        try:
-            user_path = get_user_path(user.username)
-            user_path = normalize_path(user_path)
-            content = await request.body()
-            with open(user_path + '/test.txt', "wb") as f:
-                f.write(content)
-            return Response(status_code=status.HTTP_201_CREATED)
-        except Exception as e:
-            logger.error(f"PUT error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
-
-    async def DeleteIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method delete
-        @@response_model XMLResponse
+        @method get
+        @path_params /{file_path:path}
         """
         try:
-            path = self.normalize_path(path)
-            resource = self.fs.get_resource(path)
-            if not resource:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
-            self.fs.delete_resource(path)
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            logger.error(f"DELETE error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            asked = request.headers.get("Range")
 
-    async def CopyIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method copy
-        @response_model XMLResponse
-        """
-        try:
-            path = self.normalize_path(path)
-            destination_header = request.headers.get("Destination", "")
-            destination = self.normalize_path(urlparse(unquote(destination_header)).path)
-            resource = self.fs.get_resource(path)
-            if not resource:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
-            self.fs.create_resource(destination, content=resource.content, is_collection=resource.is_collection)
-            return Response(status_code=status.HTTP_201_CREATED)
-        except Exception as e:
-            logger.error(f"COPY error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            file = get_file(db, file_path, auth.id)
+            props = file.properties
 
-    async def MoveIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method move
-        @response_model XMLResponse
-        """
-        try:
-            path = self.normalize_path(path)
-            destination_header = request.headers.get("Destination", "")
-            destination = self.normalize_path(urlparse(unquote(destination_header)).path)
-            resource = self.fs.get_resource(path)
-            if not resource:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
-            self.fs.create_resource(destination, content=resource.content, is_collection=resource.is_collection)
-            self.fs.delete_resource(path)
-            return Response(status_code=status.HTTP_201_CREATED)
-        except Exception as e:
-            logger.error(f"MOVE error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            if asked is not None:
+                bytes_requested = asked.split("=")[-1]
+                start_byte_requested = parse_int(bytes_requested.split("-")[0])
+                end_byte_requested = min(parse_int(bytes_requested.split("-")[1], BYTES_PER_RESPONSE),
+                                         BYTES_PER_RESPONSE)
+            else:
+                start_byte_requested = 0
+                end_byte_requested = BYTES_PER_RESPONSE
 
-    async def LockIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
-        """
-        @method lock
-        @response_model XMLResponse
-        """
-        try:
-            path = self.normalize_path(path)
-            resource = self.fs.get_resource(path)
-            if not resource:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
-            lock_token = f"opaquelocktoken:{uuid.uuid4()}"
-            resource.locks[lock_token] = {"depth": "infinity", "timeout": "Infinite", "owner": ""}
+            end_byte_planned = min(start_byte_requested + end_byte_requested, props.getcontentlength)
 
-            prop = Prop(
-                content_type=resource.properties.get("getcontenttype", ""),
-                content_length=resource.properties.get("getcontentlength", 0)
+            return StreamingResponse(
+                file.send_data(
+                    None,
+                    chunk_size=BYTES_PER_RESPONSE,
+                    start=start_byte_requested,
+                    size=end_byte_planned - start_byte_requested  # props.get('getcontentlength')
+                ),
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Content-Range": f"bytes {start_byte_requested}-{end_byte_planned}/{props.getcontentlength}",
+                    "Content-Type": props.getcontenttype,
+                },
+                status_code=206
             )
-            propstat = PropStat(status="HTTP/1.1 200 OK", prop=prop)
-            response = WebdavResponse(href=path, propstat=propstat)
-            multistatus = Multistatus(response=response)
-            headers = {"Lock-Token": f"<{lock_token}>"}
-            return XMLResponse(content=multistatus, status_code=status.HTTP_200_OK, headers=headers)
-        except Exception as e:
-            logger.error(f"LOCK error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
 
-    async def UnlockIndexAction(self, request: Request, path: str = "", user=Depends(basic_auth)) -> XMLResponse:
+        except Exception as e:
+            logger.error(e)
+            return Response(status_code=404, content="File not found", media_type='text/plain')
+            # raise
+
+    @staticmethod
+    def HeadIndexAction(request: Request, file_path: str = '', auth: UserAuth = Depends(basic_auth),
+                       db: Session = Depends(get_db)):
         """
-        @method unlock
-        @response_model XMLResponse
+        @method head
+        @path_params /{file_path:path}
         """
         try:
-            path = self.normalize_path(path)
-            resource = self.fs.get_resource(path)
-            if not resource:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+            # asked = request.headers.get("Range")
 
-            lock_token = request.headers.get("Lock-Token", "").strip("<>")
-            if lock_token not in resource.locks:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invalid lock token")
-            del resource.locks[lock_token]
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
+            file = get_file(db, file_path, auth.id)
+            props = file.properties
+            #
+            # if asked is not None:
+            #     bytes_requested = asked.split("=")[-1]
+            #     start_byte_requested = parse_int(bytes_requested.split("-")[0])
+            #     end_byte_requested = min(parse_int(bytes_requested.split("-")[1], BYTES_PER_RESPONSE),
+            #                              BYTES_PER_RESPONSE)
+            # else:
+            #     start_byte_requested = 0
+            #     end_byte_requested = BYTES_PER_RESPONSE
+
+
+
+            # end_byte_planned = min(start_byte_requested + end_byte_requested, props.getcontentlength)
+
+            return Response(
+                headers={
+                    "Content-Length": str(props.getcontentlength),
+                    "Content-Type": str(props.getcontenttype),
+                },
+                content=None,
+                media_type='text/plain',
+                status_code=200
+            )
+
         except Exception as e:
-            logger.error(f"UNLOCK error for path {path}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            logger.error(e)
+            # return Response(status_code=404, content="File not found", media_type='text/plain')
+            raise
 
-    def __str__(self):
-        return f"{self.__class__.__name__} handles WebDAV requests"
+    @staticmethod
+    def PropfindIndexAction(request: Request, file_path: str = '', auth: UserAuth = Depends(basic_auth),
+                            db: Session = Depends(get_db),
+                            body: bytes = Depends(get_body)):
+        """
+        @method propfind
+        @path_params /{file_path:path}
+        """
+        depth = 'infinity'
+        if 'Depth' in request.headers:
+            depth = request.headers['Depth'].lower()
+
+        d = builddict(body.decode('utf-8')) # todo отдавать только требуемые поля, а не все
+
+        try:
+            file = get_file(db, file_path, auth.id)
+        except Exception as e:
+            return Response(
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        if not file:
+            if len(file_path) >= 1:
+                return Response(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    headers={
+                        'Content-length': '0'
+                    }
+                )
+            else:
+                file = ROOT
+        if depth != '0' and not file: #or file.type != EMEMBER.COLLECTION:
+            return Response(
+                status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                headers={
+                    'Content-length': '0'
+                }
+            )
+
+        # print(
+        #     file.propfind().to_xml()
+        # )
+
+        return Response(
+            status_code=status.HTTP_207_MULTI_STATUS,
+            content=file.propfind().to_xml()
+        )
+
