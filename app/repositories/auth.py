@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 import app.repositories.crud as crud
 from app.database.db import SessionLocal
+from app.schemas.schemas import UserAuth
 
 load_dotenv()
 # Секретный ключ для JWT
@@ -107,7 +108,7 @@ async def get_current_active_user(
         )
     return user
 
-def basic_auth(credentials: HTTPBasicCredentials = Depends(security_basic), db: Session = Depends(get_db)):
+def basic_auth(credentials: HTTPBasicCredentials = Depends(security_basic), db: Session = Depends(get_db)) -> UserAuth:
     user = crud.get_user_by_username(db, username=credentials.username)
     if not user:
         raise HTTPException(
@@ -118,7 +119,7 @@ def basic_auth(credentials: HTTPBasicCredentials = Depends(security_basic), db: 
 
     for password in user.passwords:
         if crud.verify_password(credentials.password, password.hashed_password):
-            return password.name_password
+            return UserAuth(id=user.id, username=user.username, passname=password.name_password)
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Неверные учетные данные",

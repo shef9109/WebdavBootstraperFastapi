@@ -16,6 +16,10 @@ class UserCreate(UserBase):
 class UserResponse(BaseSchema):
     id: int
 
+class UserAuth(BaseSchema):
+    id: int
+    username: str
+    passname: str
 
 class Token(BaseModel):
     access_token: str
@@ -35,3 +39,19 @@ class CreatePass(BaseSchema):
     name_password: str
     created_at: datetime
     password: str
+
+class FileInfo(BaseSchema):
+    creationdate: str
+    getlastmodified: str
+    displayname: str
+    getetag: str
+    getcontentlength: int | None
+    getcontenttype: str | None
+    resourcetype: str | None
+
+    ishidden: int | None
+    isreadonly: int | None
+    isroot: int | None
+    iscollection: int | None
+
+    getcontentlanguage: str | None = None

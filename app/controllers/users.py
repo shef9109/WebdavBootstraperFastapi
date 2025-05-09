@@ -9,6 +9,7 @@ from app.repositories import crud
 from app.repositories.app_passwords import get_passwords_of_user, create_password, delete_password
 from app.repositories.auth import get_current_user, get_db, basic_auth
 from app.schemas import schemas
+from app.schemas.schemas import UserAuth
 from app.utils import templates, get_context
 
 
@@ -111,13 +112,13 @@ class UsersController:
         return HTMLResponse(status_code=HTTPStatus.NO_CONTENT)
 
     @staticmethod
-    def GetTestPassAuthAction(request: Request, file_path: str, auth: str = Depends(basic_auth)):
+    def GetTestPassAuthAction(request: Request, file_path: str, auth: UserAuth = Depends(basic_auth)):
         """
         @method get
         @response_model JSONResponse
         @path_params /{file_path:path}
         """
-        return {"name_password": auth, "path": file_path}
+        return {"auth": auth, "path": file_path}
 
     def __str__(self):
         return f"{self.__class__.__name__} работает для вас <3"
