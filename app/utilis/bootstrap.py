@@ -17,6 +17,7 @@ python_action_mask = re.compile(r'^(?P<Type>(Get|Post|Put|Options|Head|Delete|Pa
 kebab_case_converter = re.compile(r'((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))')
 docstring_method_mask = re.compile(r'\s+(@method)\s+(?P<Type>(get|post|put|options|head|delete|patch|propfind|move|lock|unlock|proppatch|mkcol|copy|))')
 docstring_response_model_mask = re.compile(r'@response_model\s(?P<Name>\w+)')
+docstring_path_param = re.compile(r'@path_params\s(?P<Path>[\w\d:\/\{\}]+)')
 
 
 def to_kebab_case(func_name: str) -> str:
@@ -52,11 +53,26 @@ def get_action_type(func: Callable, name: str) -> str:
     
     return 'GET'
 
+
+def get_path_params(func: Callable) -> str:
+    docstring = func.__doc__
+    if docstring is None:
+        return ''
+    if (docstring_match := docstring_path_param.search(docstring)) is not None:
+        print(docstring)
+
+        return docstring_match.group('Path')
+
+    return ''
+
 def register_action(router: APIRouter, name: str, func: Callable, module: ModuleType) -> None:
     action_name = python_action_mask.match(name).group('Name')
     action_type = get_action_type(func, name)
     response_type = get_response_model(func, module)
-    router.add_api_route(path=f'/{to_kebab_case(action_name)}', endpoint=func, methods=[action_type,], response_class=response_type, response_model=None)
+    path_params = get_path_params(func)
+    path = f'/{to_kebab_case(action_name)}{path_params}'
+
+    router.add_api_route(path=path, endpoint=func, methods=[action_type,], response_class=response_type, response_model=None)
     if action_name.lower() == 'index':
         router.add_api_route(path='/', endpoint=func, methods=[action_type,], response_class=response_type)
 

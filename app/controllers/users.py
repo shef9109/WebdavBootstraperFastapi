@@ -111,12 +111,13 @@ class UsersController:
         return HTMLResponse(status_code=HTTPStatus.NO_CONTENT)
 
     @staticmethod
-    def GetTestPassAuthAction(request: Request, auth: str = Depends(basic_auth)):
+    def GetTestPassAuthAction(request: Request, file_path: str, auth: str = Depends(basic_auth)):
         """
         @method get
         @response_model JSONResponse
+        @path_params /{file_path:path}
         """
-        return {"name_password": auth}
+        return {"name_password": auth, "path": file_path}
 
     def __str__(self):
         return f"{self.__class__.__name__} работает для вас <3"
