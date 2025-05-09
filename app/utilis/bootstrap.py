@@ -59,8 +59,6 @@ def get_path_params(func: Callable) -> str:
     if docstring is None:
         return ''
     if (docstring_match := docstring_path_param.search(docstring)) is not None:
-        print(docstring)
-
         return docstring_match.group('Path')
 
     return ''
