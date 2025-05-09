@@ -2,6 +2,7 @@ import re
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
 from jose import jwt
 from starlette.staticfiles import StaticFiles
 
@@ -17,6 +18,7 @@ app = FastAPI(
     debug=True,
     title="Webdav + Fastapi",
     version="1.0.0",
+    docs_url=None,
 )
 
 # Монтирование статических файлов
@@ -62,6 +64,18 @@ async def add_current_user(request: Request, call_next):
         request.state.current_user = None
     response = await call_next(request)
     return response
+
+# Локальный swagger
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title="My API",
+        oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
+        swagger_js_url="/static/swagger/swagger-ui-bundle.js",
+        swagger_css_url="/static/swagger/swagger-ui.css",
+        # swagger_favicon_url="/static/favicon-32x32.png",
+    )
 
 
 bootstrap_controllers(app)
