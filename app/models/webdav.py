@@ -160,7 +160,9 @@ class DirCollection(FileSystemMember):
             member.parent = self
 
     def get_members(self):
-        return self._children
+        if self._children is None:
+            self._children = []
+        return self._children if len(self._children) > 0 else [self]
 
     def send_data(self, stream: BytesIO | None, chunk_size: int, start: int, size: int):
 
